@@ -127,6 +127,7 @@ struct fpc1145_data {
 	struct mutex intrpoll_lock;
 	struct mutex lock;
 	bool prepared;
+	bool wakeup_enabled;
 };
 
 struct fpc1145_awake_args {
@@ -329,15 +330,9 @@ static int fpc1145_device_release(struct inode *inode, struct file *fp)
 
 static inline void fpc1145_enable_irq_if_disabled(struct fpc1145_data *fpc1145)
 {
+	/* The irq is edge triggered and never masked; just re-arm the poll. */
 	mutex_lock(&fpc1145->intrpoll_lock);
-
-	/* Enable the irq if not enabled: */
-	if (fpc1145->irq_fired) {
-		fpc1145->irq_fired = false;
-		dev_dbg(fpc1145->dev, "%s: enabling irq\n", __func__);
-		enable_irq(fpc1145->irq);
-	}
-
+	fpc1145->irq_fired = false;
 	mutex_unlock(&fpc1145->intrpoll_lock);
 }
 
@@ -501,11 +496,16 @@ static irqreturn_t fpc1145_irq_handler(int irq, void *handle)
 
 	fpc1145->irq_fired = true;
 
-	disable_irq_nosync(fpc1145->irq);
-	pm_wakeup_event(fpc1145->dev, FPC_MAX_HAL_PROCESSING_TIME);
+	if (fpc1145->wakeup_enabled)
+		pm_stay_awake(fpc1145->dev);
+	else
+		pm_wakeup_event(fpc1145->dev, FPC_MAX_HAL_PROCESSING_TIME);
 	wake_up_interruptible(&fpc1145->irq_evt);
 
 	mutex_unlock(&fpc1145->intrpoll_lock);
+
+	/* The Android 9 HAL polls the irq sysfs node */
+	sysfs_notify(&fpc1145->dev->kobj, NULL, "irq");
 
 	return IRQ_HANDLED;
 }
@@ -554,6 +554,176 @@ static int fpc1145_get_regulators(struct fpc1145_data *fpc1145)
 
 	return 0;
 }
+
+/*
+ * Legacy sysfs interface of the 4.4 driver, still used by the Android 9
+ * fpc_fingerprint@2.1 HAL blobs (/sys/devices/platform/soc/soc:fpc1145/*).
+ */
+static ssize_t hw_reset_store(struct device *dev, struct device_attribute *attr,
+			      const char *buf, size_t count)
+{
+	struct fpc1145_data *fpc1145 = dev_get_drvdata(dev);
+	int rc = -EINVAL;
+
+	if (!strncmp(buf, "reset", strlen("reset")))
+		rc = hw_reset(fpc1145);
+	return rc ? rc : count;
+}
+static DEVICE_ATTR_WO(hw_reset);
+
+static ssize_t pinctl_set_store(struct device *dev,
+				struct device_attribute *attr, const char *buf,
+				size_t count)
+{
+	struct fpc1145_data *fpc1145 = dev_get_drvdata(dev);
+	int rc = select_pin_ctl(fpc1145, buf);
+
+	return rc ? rc : count;
+}
+static DEVICE_ATTR_WO(pinctl_set);
+
+static int rail_by_name(const char *name)
+{
+	int i;
+
+	for (i = 0; i < FPC_VREG_MAX; i++)
+		if (!strcmp(vreg_conf[i].name, name))
+			return i;
+	return -EINVAL;
+}
+
+/* "<regulator name>,e" or "<regulator name>,d" */
+static ssize_t regulator_enable_store(struct device *dev,
+				      struct device_attribute *attr,
+				      const char *buf, size_t count)
+{
+	struct fpc1145_data *fpc1145 = dev_get_drvdata(dev);
+	char name[16];
+	char op;
+	int rail, rc;
+
+	if (sscanf(buf, "%15[^,],%c", name, &op) != NUM_PARAMS_REG_ENABLE_SET)
+		return -EINVAL;
+	if (op != 'e' && op != 'd')
+		return -EINVAL;
+	rail = rail_by_name(name);
+	if (rail < 0)
+		return rail;
+
+	rc = vreg_setup(fpc1145, rail, op == 'e');
+	return rc ? rc : count;
+}
+static DEVICE_ATTR_WO(regulator_enable);
+
+/* Powers the sensor up or down, like FPC_IOCWPREPARE. */
+static ssize_t spi_prepare_store(struct device *dev,
+				 struct device_attribute *attr, const char *buf,
+				 size_t count)
+{
+	struct fpc1145_data *fpc1145 = dev_get_drvdata(dev);
+	int rc;
+
+	if (!strncmp(buf, "enable", strlen("enable")))
+		rc = device_prepare(fpc1145, true);
+	else if (!strncmp(buf, "disable", strlen("disable")))
+		rc = device_prepare(fpc1145, false);
+	else
+		return -EINVAL;
+	return rc ? rc : count;
+}
+static DEVICE_ATTR_WO(spi_prepare);
+
+/* Whether a sensor interrupt keeps the system awake until the HAL relaxes it. */
+static ssize_t wakeup_enable_store(struct device *dev,
+				   struct device_attribute *attr,
+				   const char *buf, size_t count)
+{
+	struct fpc1145_data *fpc1145 = dev_get_drvdata(dev);
+
+	if (!strncmp(buf, "enable", strlen("enable"))) {
+		fpc1145->wakeup_enabled = true;
+		pm_relax(dev);
+	} else if (!strncmp(buf, "disable", strlen("disable"))) {
+		fpc1145->wakeup_enabled = false;
+	} else {
+		return -EINVAL;
+	}
+	return count;
+}
+static DEVICE_ATTR_WO(wakeup_enable);
+
+/* > 0: wakelock for that many ms, 0: hold the wakelock, < 0: release it */
+static ssize_t wake_lock_store(struct device *dev,
+			       struct device_attribute *attr, const char *buf,
+			       size_t count)
+{
+	int ms;
+	int rc = kstrtoint(buf, 10, &ms);
+
+	if (rc)
+		return rc;
+	if (ms > 0)
+		pm_wakeup_event(dev, ms);
+	else if (!ms)
+		pm_stay_awake(dev);
+	else
+		pm_relax(dev);
+	return count;
+}
+static DEVICE_ATTR_WO(wake_lock);
+
+/* The irq stays wake-capable (see probe), so this only reports the setting. */
+static ssize_t pm_wakeup_show(struct device *dev, struct device_attribute *attr,
+			      char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "enabled\n");
+}
+
+static ssize_t pm_wakeup_store(struct device *dev,
+			       struct device_attribute *attr, const char *buf,
+			       size_t count)
+{
+	if (strncmp(buf, "enable", strlen("enable")) &&
+	    strncmp(buf, "disable", strlen("disable")))
+		return -EINVAL;
+	return count;
+}
+static DEVICE_ATTR_RW(pm_wakeup);
+
+static ssize_t irq_show(struct device *dev, struct device_attribute *attr,
+			char *buf)
+{
+	struct fpc1145_data *fpc1145 = dev_get_drvdata(dev);
+	int irq = gpio_get_value(fpc1145->irq_gpio);
+
+	fpc1145_enable_irq_if_disabled(fpc1145);
+	return scnprintf(buf, PAGE_SIZE, "%i\n", irq);
+}
+
+static ssize_t irq_store(struct device *dev, struct device_attribute *attr,
+			 const char *buf, size_t count)
+{
+	struct fpc1145_data *fpc1145 = dev_get_drvdata(dev);
+
+	fpc1145_enable_irq_if_disabled(fpc1145);
+	return count;
+}
+static DEVICE_ATTR_RW(irq);
+
+static struct attribute *fpc1145_attrs[] = {
+	&dev_attr_hw_reset.attr,
+	&dev_attr_pinctl_set.attr,
+	&dev_attr_regulator_enable.attr,
+	&dev_attr_spi_prepare.attr,
+	&dev_attr_wakeup_enable.attr,
+	&dev_attr_wake_lock.attr,
+	&dev_attr_pm_wakeup.attr,
+	&dev_attr_irq.attr,
+	NULL,
+};
+static const struct attribute_group fpc1145_attribute_group = {
+	.attrs = fpc1145_attrs,
+};
 
 static int fpc1145_probe(struct platform_device *pdev)
 {
@@ -655,7 +825,7 @@ static int fpc1145_probe(struct platform_device *pdev)
 	if (rc)
 		goto exit;
 
-	irqf = IRQF_TRIGGER_HIGH | IRQF_ONESHOT;
+	irqf = IRQF_TRIGGER_RISING | IRQF_ONESHOT;
 	mutex_init(&fpc1145->lock);
 	mutex_init(&fpc1145->intrpoll_lock);
 
@@ -679,6 +849,10 @@ static int fpc1145_probe(struct platform_device *pdev)
 		dev_info(dev, "Enabling hardware\n");
 		(void)device_prepare(fpc1145, true);
 	}
+
+	rc = sysfs_create_group(&dev->kobj, &fpc1145_attribute_group);
+	if (rc)
+		dev_err(dev, "could not create sysfs attributes: %d\n", rc);
 
 	rc = misc_register(&fpc1145->misc);
 	if (!rc)
