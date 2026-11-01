@@ -95,6 +95,9 @@ struct drm_msm_ext_hdr_metadata {
 	__u32 min_luminance;    /* Min Luminance */
 	__u32 max_content_light_level; /* max content light level */
 	__u32 max_average_light_level; /* max average light level */
+
+	__u64 hdr_plus_payload;     /* user pointer to dynamic HDR payload */
+	__u32 hdr_plus_payload_size;/* size of dynamic HDR payload data */
 };
 
 /**
@@ -110,6 +113,8 @@ struct drm_msm_ext_hdr_properties {
 	__u32 hdr_max_luminance;      /* Max luminance */
 	__u32 hdr_avg_luminance;      /* Avg luminance */
 	__u32 hdr_min_luminance;      /* Min Luminance */
+
+	__u32 hdr_plus_supported;     /* HDR10+ supported */
 };
 
 #define MSM_PARAM_GPU_ID     0x01

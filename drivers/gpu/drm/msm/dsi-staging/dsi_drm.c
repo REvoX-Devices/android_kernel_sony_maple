@@ -826,6 +826,11 @@ int dsi_connector_get_modes(struct drm_connector *connector, void *data)
 			count = -ENOMEM;
 			goto end;
 		}
+		/* userspace (sde-drm) reads the panel mode from the mode flags */
+		if (display->panel && display->panel->panel_mode == DSI_OP_CMD_MODE)
+			m->flags |= DRM_MODE_FLAG_CMD_MODE_PANEL;
+		else if (display->panel && display->panel->panel_mode == DSI_OP_VIDEO_MODE)
+			m->flags |= DRM_MODE_FLAG_VID_MODE_PANEL;
 		m->width_mm = connector->display_info.width_mm;
 		m->height_mm = connector->display_info.height_mm;
 		/* set the first mode in list as preferred */
