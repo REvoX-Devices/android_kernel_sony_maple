@@ -3360,7 +3360,7 @@ static void  msm_serial_hs_rt_init(struct uart_port *uport)
 
 	MSM_HS_DBG("%s(): Enabling runtime pm\n", __func__);
 	pm_runtime_set_suspended(uport->dev);
-	pm_runtime_set_autosuspend_delay(uport->dev, 100);
+	pm_runtime_set_autosuspend_delay(uport->dev, delay);
 	pm_runtime_use_autosuspend(uport->dev);
 	mutex_lock(&msm_uport->mtx);
 	msm_uport->pm_state = MSM_HS_PM_SUSPENDED;
