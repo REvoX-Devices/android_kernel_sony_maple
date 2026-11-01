@@ -638,7 +638,6 @@
 		interrupt-controller;
 		#interrupt-cells = <4>;
 		cell-index = <0>;
-		qcom,enable-ahb-bus-workaround;
 	};
 
 	qcom,sps {
@@ -1351,8 +1350,8 @@
 		clocks = <&clock_rpmcc RPM_SMD_IPA_CLK>;
 		clock-names = "core_clk";
 		qcom,arm-smmu;
-		qcom,smmu-fast-map;
 		qcom,smmu-disable-htw;
+		qcom,smmu-s1-bypass;
 		qcom,msm-bus,name = "ipa";
 		qcom,msm-bus,num-cases = <5>;
 		qcom,msm-bus,num-paths = <4>;
@@ -1405,6 +1404,7 @@
 		ipa_smmu_ap: ipa_smmu_ap {
 			compatible = "qcom,ipa-smmu-ap-cb";
 			iommus = <&anoc2_smmu 0x18e0>;
+			qcom,smmu-s1-bypass;
 			qcom,iova-mapping = <0x20000000 0x40000000>;
 			qcom,additional-mapping =
 				<0x146BD000 0x146BD000 0x2000>;
@@ -1413,6 +1413,7 @@
 		ipa_smmu_wlan: ipa_smmu_wlan {
 			compatible = "qcom,ipa-smmu-wlan-cb";
 			iommus = <&anoc2_smmu 0x18e1>;
+			qcom,smmu-s1-bypass;
 			qcom,additional-mapping =
 				<0x1E60000 0x1E60000 0x80000>;
 		};
@@ -1420,6 +1421,7 @@
 		ipa_smmu_uc: ipa_smmu_uc {
 			compatible = "qcom,ipa-smmu-uc-cb";
 			iommus = <&anoc2_smmu 0x18e2>;
+			qcom,smmu-s1-bypass;
 			qcom,iova-mapping = <0x40000000 0x20000000>;
 		};
 	};
@@ -2970,6 +2972,8 @@
 		      <0xa0000000 0x10000000>,
 		      <0xb0000000 0x10000>;
 		reg-names = "membase", "smmu_iova_base", "smmu_iova_ipa";
+		/* The IPA context banks bypass S1 too; qcacld refuses a mismatch */
+		qcom,smmu-s1-bypass;
 		clocks = <&clock_rpmcc RPM_SMD_RF_CLK2_PIN>;
 		clock-names = "cxo_ref_clk_pin";
 		iommus = <&anoc2_smmu 0x1900>,

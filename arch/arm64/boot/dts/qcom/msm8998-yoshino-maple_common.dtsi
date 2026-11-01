@@ -20,15 +20,10 @@
 #include "msm8998-yoshino-maple-camera.dtsi"
 #include "dsi-panel-somc-maple.dtsi"
 
-/ {
-	firmware: firmware {
-		android {
-			fstab {
-				vendor {
-					status = "disabled";
-				};
-			};
-		};
+&firmware {
+	android {
+		boot_devices = "soc/1da4000.ufshc";
+		/delete-node/ fstab;
 	};
 };
 
