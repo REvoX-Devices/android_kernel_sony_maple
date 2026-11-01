@@ -7,6 +7,9 @@
 #ifndef _LINUX_BPF_VERIFIER_H
 #define _LINUX_BPF_VERIFIER_H 1
 
+/* Backport of upstream c04c0d2b968a ("bpf: increase complexity limit and maximum program size") */
+#define BPF_COMPLEXITY_LIMIT_INSNS	1000000 /* yes. 1M insns */
+
 #include <linux/bpf.h> /* for enum bpf_reg_type */
 #include <linux/filter.h> /* for MAX_BPF_STACK */
 #include <linux/tnum.h>
@@ -141,6 +144,32 @@ struct bpf_ext_analyzer_ops {
 	int (*insn_hook)(struct bpf_verifier_env *env,
 			 int insn_idx, int prev_insn_idx);
 };
+
+#define BPF_VERIFIER_TMP_LOG_SIZE	1024
+
+/* log used by BTF loading (backported from 4.18); the 4.14 verifier itself
+ * still uses its own global log.
+ */
+struct bpf_verifier_log {
+	u32 level;
+	char kbuf[BPF_VERIFIER_TMP_LOG_SIZE];
+	char __user *ubuf;
+	u32 len_used;
+	u32 len_total;
+};
+
+static inline bool bpf_verifier_log_full(const struct bpf_verifier_log *log)
+{
+	return log->len_used >= log->len_total - 1;
+}
+
+static inline bool bpf_verifier_log_needed(const struct bpf_verifier_log *log)
+{
+	return log->level && log->ubuf && !bpf_verifier_log_full(log);
+}
+
+__printf(2, 0) void bpf_verifier_vlog(struct bpf_verifier_log *log,
+				      const char *fmt, va_list args);
 
 /* single container for all structs
  * one verifier_env per bpf_check() call
