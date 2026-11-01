@@ -420,6 +420,40 @@ err:
 	return rc;
 }
 
+/*
+ * The irq is enabled by ISPIF_INIT but disabled on every last close, and the
+ * Android 9 mm-camera also opens and closes the ISPIF without an INIT: keep
+ * enable_irq()/disable_irq() balanced, or the irq stays disabled and every
+ * reset times out.
+ */
+static int msm_ispif_enable_irq(struct ispif_device *ispif, bool enable)
+{
+	int rc = 0;
+
+	if (ispif->irq_enabled != enable) {
+		rc = msm_camera_enable_irq(ispif->irq, enable);
+		if (!rc)
+			ispif->irq_enabled = enable;
+	}
+	return rc;
+}
+
+static void msm_ispif_clear_irq_status(struct ispif_device *ispif)
+{
+	int vfe;
+
+	for (vfe = VFE0; vfe < ispif->hw_num_isps && vfe <= VFE1; vfe++) {
+		msm_camera_io_w(0xFFFFFFFF,
+			ispif->base + ISPIF_VFE_m_IRQ_CLEAR_0(vfe));
+		msm_camera_io_w(0xFFFFFFFF,
+			ispif->base + ISPIF_VFE_m_IRQ_CLEAR_1(vfe));
+		msm_camera_io_w(0xFFFFFFFF,
+			ispif->base + ISPIF_VFE_m_IRQ_CLEAR_2(vfe));
+	}
+	msm_camera_io_w_mb(ISPIF_IRQ_GLOBAL_CLEAR_CMD,
+		ispif->base + ISPIF_IRQ_GLOBAL_CLEAR_CMD_ADDR);
+}
+
 static int msm_ispif_reset_hw(struct ispif_device *ispif)
 {
 	int rc = 0;
@@ -444,6 +478,12 @@ static int msm_ispif_reset_hw(struct ispif_device *ispif)
 		ispif->clk_idx = 1;
 	}
 	memset(ispif->stereo_configured, 0, sizeof(ispif->stereo_configured));
+	/*
+	 * The interrupt is edge triggered: a RESET_DONE left pending from an
+	 * earlier session keeps the line high, so the reset done of this one
+	 * would never raise an interrupt. Clear whatever is pending first.
+	 */
+	msm_ispif_clear_irq_status(ispif);
 	atomic_set(&ispif->reset_trig[VFE0], 1);
 	/* initiate reset of ISPIF */
 	msm_camera_io_w(ISPIF_RST_CMD_MASK,
@@ -1743,7 +1783,7 @@ static int msm_ispif_init(struct ispif_device *ispif,
 		return rc;
 	}
 
-	rc = msm_camera_enable_irq(ispif->irq, 1);
+	rc = msm_ispif_enable_irq(ispif, true);
 	if (rc < 0) {
 		pr_err("%s:Error enabling IRQs\n", __func__);
 		return rc;
@@ -1795,7 +1835,7 @@ static void msm_ispif_release(struct ispif_device *ispif)
 		return;
 	}
 
-	msm_camera_enable_irq(ispif->irq, 0);
+	msm_ispif_enable_irq(ispif, false);
 
 	ispif->ispif_state = ISPIF_POWER_DOWN;
 

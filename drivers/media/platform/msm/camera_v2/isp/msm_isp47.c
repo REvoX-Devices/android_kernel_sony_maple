@@ -829,8 +829,27 @@ long msm_vfe47_reset_hardware(struct vfe_device *vfe_dev,
 		rc = wait_for_completion_interruptible_timeout(
 			&vfe_dev->reset_complete, msecs_to_jiffies(100));
 		if (rc <= 0) {
-			pr_err("%s:%d failed: reset timeout\n", __func__,
-				__LINE__);
+			/*
+			 * The reset done interrupt is sometimes not delivered
+			 * when the node is reopened right after a stream
+			 * stop. The status register still shows that the
+			 * reset has finished.
+			 */
+			if (msm_camera_io_r(vfe_dev->vfe_base + 0x6c) &
+					(1 << 31)) {
+				pr_warn("%s:%d reset done irq lost\n",
+					__func__, __LINE__);
+				msm_camera_io_w(0xFFFFFFFF,
+					vfe_dev->vfe_base + 0x64);
+				msm_camera_io_w_mb(0xFFFFFFFF,
+					vfe_dev->vfe_base + 0x68);
+				msm_camera_io_w_mb(0x1,
+					vfe_dev->vfe_base + 0x58);
+				rc = 1;
+			} else {
+				pr_err("%s:%d failed: reset timeout\n",
+					__func__, __LINE__);
+			}
 			vfe_dev->reset_pending = 0;
 		}
 	}

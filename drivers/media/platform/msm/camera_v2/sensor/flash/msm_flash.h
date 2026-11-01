@@ -1,4 +1,4 @@
-/* Copyright (c) 2009-2016, 2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2009-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -82,7 +82,6 @@ struct msm_flash_ctrl_t {
 	uint32_t flash_op_current[MAX_LED_TRIGGERS];
 	uint32_t flash_max_current[MAX_LED_TRIGGERS];
 	uint32_t flash_max_duration[MAX_LED_TRIGGERS];
-	struct led_classdev flash_cdev;
 
 	/* Torch */
 	uint32_t torch_num_sources;
@@ -90,7 +89,6 @@ struct msm_flash_ctrl_t {
 	struct led_trigger *torch_trigger[MAX_LED_TRIGGERS];
 	uint32_t torch_op_current[MAX_LED_TRIGGERS];
 	uint32_t torch_max_current[MAX_LED_TRIGGERS];
-	struct led_classdev torch_cdev;
 
 	void *data;
 	enum msm_camera_device_type_t flash_device_type;

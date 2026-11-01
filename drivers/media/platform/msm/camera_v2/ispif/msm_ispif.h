@@ -48,6 +48,7 @@ struct ispif_device {
 	struct platform_device *pdev;
 	struct msm_sd_subdev msm_sd;
 	struct resource *irq;
+	bool irq_enabled;
 	void __iomem *base;
 	void __iomem *clk_mux_base;
 	struct mutex mutex;

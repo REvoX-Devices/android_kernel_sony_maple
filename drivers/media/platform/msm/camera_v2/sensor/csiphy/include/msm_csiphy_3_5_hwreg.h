@@ -1,4 +1,4 @@
-/* Copyright (c) 2015-2016, 2018-2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015-2016, 2018 The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -14,18 +14,17 @@
 #define MSM_CSIPHY_3_5_HWREG_H
 
 #define ULPM_WAKE_UP_TIMER_MODE                   2
-#define GLITCH_ELIMINATION_NUM                    0x12 /* bit [6:4] */
 
 #include <sensor/csiphy/msm_csiphy.h>
 
-static struct csiphy_reg_parms_t csiphy_v3_5 = {
+struct csiphy_reg_parms_t csiphy_v3_5 = {
 	.mipi_csiphy_interrupt_status0_addr = 0x8B0,
 	.mipi_csiphy_interrupt_clear0_addr = 0x858,
 	.mipi_csiphy_glbl_irq_cmd_addr = 0x828,
 	.combo_clk_mask = 0x10,
 };
 
-static struct csiphy_reg_3ph_parms_t csiphy_v3_5_3ph = {
+struct csiphy_reg_3ph_parms_t csiphy_v3_5_3ph = {
 	/*MIPI CSI PHY registers*/
 	{0x814, 0x0},
 	{0x818, 0x1},
@@ -47,7 +46,7 @@ static struct csiphy_reg_3ph_parms_t csiphy_v3_5_3ph = {
 	{0x138, 0x0},
 	{0x13C, 0x10},
 	{0x140, 0x1},
-	{0x144, GLITCH_ELIMINATION_NUM},
+	{0x144, 0x32},
 	{0x148, 0xFE},
 	{0x14C, 0x1},
 	{0x154, 0x0},

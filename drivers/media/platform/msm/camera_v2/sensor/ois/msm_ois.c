@@ -1,4 +1,4 @@
-/* Copyright (c) 2014-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -149,8 +149,8 @@ static int32_t msm_ois_data_config(struct msm_ois_ctrl_t *o_ctrl,
 	}
 	/* fill ois slave info*/
 	if (strlcpy(o_ctrl->oboard_info->ois_name, slave_info->ois_name,
-		sizeof(o_ctrl->oboard_info->ois_name)) == 0) {
-		pr_err("failed: invalid ois_name\n");
+		sizeof(o_ctrl->oboard_info->ois_name)) < 0) {
+		pr_err("failed: copy_from_user\n");
 		return -EFAULT;
 	}
 	memcpy(&(o_ctrl->oboard_info->opcode), &(slave_info->opcode),
@@ -183,7 +183,6 @@ static int32_t msm_ois_write_settings(struct msm_ois_ctrl_t *o_ctrl,
 	uint8_t *reg_data_seq;
 
 	struct msm_camera_i2c_seq_reg_array *reg_setting;
-
 	CDBG("Enter\n");
 
 	for (i = 0; i < size; i++) {
@@ -236,7 +235,7 @@ static int32_t msm_ois_write_settings(struct msm_ois_ctrl_t *o_ctrl,
 			}
 			if (settings[i].delay > 20)
 				msleep(settings[i].delay);
-			else if (settings[i].delay != 0)
+			else if (0 != settings[i].delay)
 				usleep_range(settings[i].delay * 1000,
 					(settings[i].delay * 1000) + 1000);
 		}
@@ -391,7 +390,6 @@ static int32_t msm_ois_power_down(struct msm_ois_ctrl_t *o_ctrl)
 static int msm_ois_init(struct msm_ois_ctrl_t *o_ctrl)
 {
 	int rc = 0;
-
 	CDBG("Enter\n");
 
 	if (!o_ctrl) {
@@ -416,7 +414,6 @@ static int32_t msm_ois_control(struct msm_ois_ctrl_t *o_ctrl,
 	struct reg_settings_ois_t *settings = NULL;
 	int32_t rc = 0, i = 0;
 	struct msm_camera_cci_client *cci_client = NULL;
-
 	CDBG("Enter\n");
 
 	if (o_ctrl->ois_device_type == MSM_CAMERA_PLATFORM_DEVICE) {
@@ -446,7 +443,7 @@ static int32_t msm_ois_control(struct msm_ois_ctrl_t *o_ctrl,
 			return -EFAULT;
 		}
 		if (copy_from_user(settings,
-			(void __user *)set_info->ois_params.settings,
+			(void *)set_info->ois_params.settings,
 			set_info->ois_params.setting_size *
 			sizeof(struct reg_settings_ois_t))) {
 			kfree(settings);
@@ -459,12 +456,11 @@ static int32_t msm_ois_control(struct msm_ois_ctrl_t *o_ctrl,
 			settings);
 
 		for (i = 0; i < set_info->ois_params.setting_size; i++) {
-			if (settings[i].i2c_operation
-				== MSM_OIS_READ) {
+			if (settings[i].i2c_operation == MSM_OIS_READ) {
 				if (copy_to_user(
 					(void __user *)
-					(&set_info->ois_params.settings[i]),
-					&settings[i],
+					(&set_info->ois_params.settings[i].reg_data),
+					&settings[i].reg_data,
 					sizeof(struct reg_settings_ois_t))) {
 					kfree(settings);
 					pr_err("Error copying\n");
@@ -489,12 +485,11 @@ static int32_t msm_ois_control(struct msm_ois_ctrl_t *o_ctrl,
 }
 
 static int32_t msm_ois_config(struct msm_ois_ctrl_t *o_ctrl,
-	void *argp)
+	void __user *argp)
 {
 	struct msm_ois_cfg_data *cdata =
 		(struct msm_ois_cfg_data *)argp;
 	int32_t rc = 0;
-
 	mutex_lock(o_ctrl->ois_mutex);
 	CDBG("Enter\n");
 	CDBG("%s type %d\n", __func__, cdata->cfgtype);
@@ -531,7 +526,7 @@ static int32_t msm_ois_config(struct msm_ois_ctrl_t *o_ctrl,
 		} else
 #endif
 		if (copy_from_user(&conf_array,
-			(void __user *)cdata->cfg.settings,
+			(void *)cdata->cfg.settings,
 			sizeof(struct msm_camera_i2c_seq_reg_setting))) {
 			pr_err("%s:%d failed\n", __func__, __LINE__);
 			rc = -EFAULT;
@@ -552,8 +547,7 @@ static int32_t msm_ois_config(struct msm_ois_ctrl_t *o_ctrl,
 			rc = -ENOMEM;
 			break;
 		}
-		if (copy_from_user(reg_setting,
-			(void __user *)conf_array.reg_setting,
+		if (copy_from_user(reg_setting, (void *)conf_array.reg_setting,
 			conf_array.size *
 			sizeof(struct msm_camera_i2c_seq_reg_array))) {
 			pr_err("%s:%d failed\n", __func__, __LINE__);
@@ -578,7 +572,7 @@ static int32_t msm_ois_config(struct msm_ois_ctrl_t *o_ctrl,
 }
 
 static int32_t msm_ois_config_download(struct msm_ois_ctrl_t *o_ctrl,
-	void *argp)
+	void __user *argp)
 {
 	struct msm_ois_cfg_download_data *cdata =
 		(struct msm_ois_cfg_download_data *)argp;
@@ -615,7 +609,6 @@ static int32_t msm_ois_get_subdev_id(struct msm_ois_ctrl_t *o_ctrl,
 	void *arg)
 {
 	uint32_t *subdev_id = (uint32_t *)arg;
-
 	CDBG("Enter\n");
 	if (!subdev_id) {
 		pr_err("failed\n");
@@ -660,7 +653,6 @@ static int msm_ois_close(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh) {
 	int rc = 0;
 	struct msm_ois_ctrl_t *o_ctrl =  v4l2_get_subdevdata(sd);
-
 	CDBG("Enter\n");
 	if (!o_ctrl) {
 		pr_err("failed\n");
@@ -689,8 +681,7 @@ static long msm_ois_subdev_ioctl(struct v4l2_subdev *sd,
 {
 	int rc;
 	struct msm_ois_ctrl_t *o_ctrl = v4l2_get_subdevdata(sd);
-	void *argp = (void *)arg;
-
+	void __user *argp = (void __user *)arg;
 	CDBG("Enter\n");
 	CDBG("%s:%d o_ctrl %pK argp %pK\n", __func__, __LINE__, o_ctrl, argp);
 	switch (cmd) {
@@ -781,7 +772,6 @@ static int32_t msm_ois_i2c_probe(struct i2c_client *client,
 {
 	int rc = 0;
 	struct msm_ois_ctrl_t *ois_ctrl_t = NULL;
-
 	CDBG("Enter\n");
 
 	if (client == NULL) {
@@ -791,8 +781,10 @@ static int32_t msm_ois_i2c_probe(struct i2c_client *client,
 
 	ois_ctrl_t = kzalloc(sizeof(struct msm_ois_ctrl_t),
 		GFP_KERNEL);
-	if (!ois_ctrl_t)
+	if (!ois_ctrl_t) {
+		pr_err("%s:%d failed no memory\n", __func__, __LINE__);
 		return -ENOMEM;
+	}
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		pr_err("i2c_check_functionality failed\n");
@@ -888,7 +880,7 @@ static long msm_ois_subdev_do_ioctl(
 			break;
 		case CFG_OIS_I2C_WRITE_SEQ_TABLE:
 			if (copy_from_user(&settings32,
-				(void __user *)compat_ptr(u32->cfg.settings),
+				(void *)compat_ptr(u32->cfg.settings),
 				sizeof(
 				struct msm_camera_i2c_seq_reg_setting32))) {
 				pr_err("copy_from_user failed\n");
@@ -898,20 +890,8 @@ static long msm_ois_subdev_do_ioctl(
 			settings.addr_type = settings32.addr_type;
 			settings.delay = settings32.delay;
 			settings.size = settings32.size;
-
 			settings.reg_setting =
-				kzalloc(
-				sizeof(struct msm_camera_i2c_seq_reg_array),
-				GFP_KERNEL);
-			if (!settings.reg_setting)
-				return -ENOMEM;
-			if (copy_from_user(settings.reg_setting,
-				(void __user *)
-				compat_ptr(settings32.reg_setting),
-				sizeof(struct msm_camera_i2c_seq_reg_array))) {
-				pr_err("%s:%d failed\n", __func__, __LINE__);
-				return -EFAULT;
-			}
+				compat_ptr(settings32.reg_setting);
 
 			ois_data.cfg.settings = &settings;
 			parg = &ois_data;
@@ -943,7 +923,6 @@ static int32_t msm_ois_platform_probe(struct platform_device *pdev)
 	struct msm_camera_cci_client *cci_client = NULL;
 	struct msm_ois_ctrl_t *msm_ois_t = NULL;
 	struct msm_ois_vreg *vreg_cfg;
-
 	CDBG("Enter\n");
 
 	if (!pdev->dev.of_node) {
@@ -953,8 +932,10 @@ static int32_t msm_ois_platform_probe(struct platform_device *pdev)
 
 	msm_ois_t = kzalloc(sizeof(struct msm_ois_ctrl_t),
 		GFP_KERNEL);
-	if (!msm_ois_t)
+	if (!msm_ois_t) {
+		pr_err("%s:%d failed no memory\n", __func__, __LINE__);
 		return -ENOMEM;
+	}
 
 	msm_ois_t->oboard_info = kzalloc(sizeof(
 		struct msm_ois_board_info), GFP_KERNEL);
@@ -992,7 +973,7 @@ static int32_t msm_ois_platform_probe(struct platform_device *pdev)
 
 	rc = msm_sensor_driver_get_gpio_data(&(msm_ois_t->gconf),
 		(&pdev->dev)->of_node);
-	if (rc <= 0) {
+	if (rc < 0) {
 		pr_err("%s: No/Error OIS GPIO\n", __func__);
 	} else {
 		msm_ois_t->cam_pinctrl_status = 1;
@@ -1089,7 +1070,6 @@ static struct platform_driver msm_ois_platform_driver = {
 static int __init msm_ois_init_module(void)
 {
 	int32_t rc = 0;
-
 	CDBG("Enter\n");
 	rc = platform_driver_register(&msm_ois_platform_driver);
 	if (!rc)
@@ -1102,6 +1082,7 @@ static void __exit msm_ois_exit_module(void)
 {
 	platform_driver_unregister(&msm_ois_platform_driver);
 	i2c_del_driver(&msm_ois_i2c_driver);
+	return;
 }
 
 module_init(msm_ois_init_module);

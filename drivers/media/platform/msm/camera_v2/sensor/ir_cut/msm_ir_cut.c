@@ -1,4 +1,4 @@
-/* Copyright (c) 2016, 2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2016, 2019, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -285,7 +285,7 @@ static int32_t msm_ir_cut_handle_init(
 }
 
 static int32_t msm_ir_cut_config(struct msm_ir_cut_ctrl_t *ir_cut_ctrl,
-	void *argp)
+	void __user *argp)
 {
 	int32_t rc = -EINVAL;
 	struct msm_ir_cut_cfg_data_t *ir_cut_data =
@@ -330,7 +330,7 @@ static long msm_ir_cut_subdev_ioctl(struct v4l2_subdev *sd,
 	unsigned int cmd, void *arg)
 {
 	struct msm_ir_cut_ctrl_t *fctrl = NULL;
-	void *argp = (void *)arg;
+	void __user *argp = (void __user *)arg;
 
 	CDBG("Enter\n");
 
@@ -499,7 +499,6 @@ static long msm_ir_cut_subdev_do_ioctl(
 	struct msm_ir_cut_cfg_data_t ir_cut_data;
 
 	CDBG("Enter");
-	ir_cut_data.cfg_type = u32->cfg_type;
 
 	switch (cmd) {
 	case VIDIOC_MSM_IR_CUT_CFG32:
@@ -509,6 +508,7 @@ static long msm_ir_cut_subdev_do_ioctl(
 		return msm_ir_cut_subdev_ioctl(sd, cmd, arg);
 	}
 
+	ir_cut_data.cfg_type = u32->cfg_type;
 	rc = msm_ir_cut_subdev_ioctl(sd, cmd, &ir_cut_data);
 
 	CDBG("Exit");

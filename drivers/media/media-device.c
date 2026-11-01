@@ -94,18 +94,98 @@ static struct media_entity *find_entity(struct media_device *mdev, u32 id)
 	return NULL;
 }
 
+#ifdef CONFIG_MSMB_CAMERA
+#include <media/msmb_camera.h>
+
+/*
+ * The Android 9 (4.4 kernel) mm-camera blobs find the camera subdevices and
+ * video nodes by group_id, which 4.14 no longer reports: give them the 4.4
+ * values (type MEDIA_ENT_T_V4L2_SUBDEV / MEDIA_ENT_T_DEVNODE_V4L, group_id
+ * MSM_CAMERA_SUBDEV_* / QCAMERA_VNODE_GROUP_ID as numbered on 4.4).
+ */
+/*
+ * 4.4 numbered the entities of a media device 1, 2, 3... and mm-camera walks
+ * them that way (id = n++ until -EINVAL, without MEDIA_ENT_ID_FLAG_NEXT).
+ * 4.14 takes entity ids from the graph object ids it shares with pads, links
+ * and interfaces, so for the camera media devices use the 1-based position
+ * in the entity list as the id instead.
+ */
+static bool msm_camera_legacy_mdev(struct media_device *mdev)
+{
+	return !strcmp(mdev->model, MSM_CONFIGURATION_NAME) ||
+		!strcmp(mdev->model, MSM_CAMERA_NAME);
+}
+
+static struct media_entity *msm_camera_legacy_find_entity(
+		struct media_device *mdev, u32 id, u32 *index)
+{
+	struct media_entity *entity;
+	u32 want = id & ~MEDIA_ENT_ID_FLAG_NEXT;
+	u32 n = 0;
+
+	if (id & MEDIA_ENT_ID_FLAG_NEXT)
+		want++;
+
+	media_device_for_each_entity(entity, mdev) {
+		if (++n == want) {
+			*index = n;
+			return entity;
+		}
+	}
+
+	return NULL;
+}
+
+static void msm_camera_legacy_entity_desc(struct media_entity *ent,
+					  struct media_entity_desc *entd)
+{
+	u32 n;
+
+	if (ent->function == QCAMERA_VNODE_GROUP_ID) {
+		entd->type = MEDIA_ENT_T_DEVNODE_V4L;
+		entd->group_id = 2;
+		return;
+	}
+	if (ent->function < MSM_CAMERA_SUBDEV_BASE ||
+	    ent->function > MSM_CAMERA_SUBDEV_LASER_LED)
+		return;
+
+	n = ent->function - MSM_CAMERA_SUBDEV_BASE;
+	/* 4.4 numbers CSID 1 and BUF_MNGR 13, 4.14 swapped them */
+	if (ent->function == MSM_CAMERA_SUBDEV_CSID)
+		n = 1;
+	else if (ent->function == MSM_CAMERA_SUBDEV_BUF_MNGR)
+		n = 13;
+	entd->type = MEDIA_ENT_T_V4L2_SUBDEV;
+	entd->group_id = n;
+}
+#endif
+
 static long media_device_enum_entities(struct media_device *mdev, void *arg)
 {
 	struct media_entity_desc *entd = arg;
 	struct media_entity *ent;
 
-	ent = find_entity(mdev, entd->id);
-	if (ent == NULL)
-		return -EINVAL;
+#ifdef CONFIG_MSMB_CAMERA
+	if (msm_camera_legacy_mdev(mdev)) {
+		u32 index;
 
-	memset(entd, 0, sizeof(*entd));
+		ent = msm_camera_legacy_find_entity(mdev, entd->id, &index);
+		if (ent == NULL)
+			return -EINVAL;
+		memset(entd, 0, sizeof(*entd));
+		entd->id = index;
+	} else
+#endif
+	{
+		ent = find_entity(mdev, entd->id);
+		if (ent == NULL)
+			return -EINVAL;
 
-	entd->id = media_entity_id(ent);
+		memset(entd, 0, sizeof(*entd));
+
+		entd->id = media_entity_id(ent);
+	}
 	if (ent->name)
 		strlcpy(entd->name, ent->name, sizeof(entd->name));
 	entd->type = ent->function;
@@ -135,6 +215,10 @@ static long media_device_enum_entities(struct media_device *mdev, void *arg)
 	}
 
 	memcpy(&entd->raw, &ent->info, sizeof(ent->info));
+
+#ifdef CONFIG_MSMB_CAMERA
+	msm_camera_legacy_entity_desc(ent, entd);
+#endif
 
 	return 0;
 }
