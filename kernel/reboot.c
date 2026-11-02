@@ -17,6 +17,17 @@
 #include <linux/syscore_ops.h>
 #include <linux/uaccess.h>
 
+#ifdef CONFIG_KSU
+extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd,
+				 void __user **arg);
+#else
+static inline int ksu_handle_sys_reboot(int magic1, int magic2,
+					unsigned int cmd, void __user **arg)
+{
+	return 0;
+}
+#endif
+
 /*
  * this indicates whether you can reboot with ctrl-alt-del: the default is yes
  */
@@ -280,6 +291,7 @@ static DEFINE_MUTEX(reboot_mutex);
 SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
 		void __user *, arg)
 {
+	ksu_handle_sys_reboot(magic1, magic2, cmd, &arg);
 	struct pid_namespace *pid_ns = task_active_pid_ns(current);
 	char buffer[256];
 	int ret = 0;

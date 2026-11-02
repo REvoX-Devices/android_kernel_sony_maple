@@ -99,7 +99,7 @@ int ss_initialized;
  * The sequence number only changes when a policy change
  * occurs.
  */
-static u32 latest_granting;
+u32 latest_granting;	/* exported for KernelSU (reset_avc_cache) */
 
 /* Forward declaration. */
 static int context_struct_to_string(struct context *context, char **scontext,
