@@ -191,6 +191,9 @@
 
 	iommu_test_device {
 		compatible = "iommu-debug-test";
+		/* Debug only. Each one takes a stream mapping register of the mmss SMMU (54 in total),
+		 * which the JPEG encoder (0x800/0x801) then lacks: "No iommu associated with device". */
+		status = "disabled";
 		/*
 		 * 42 shouldn't be used by anyone on the mmss_smmu.  We just
 		 * need _something_ here to get this node recognized by the
@@ -202,6 +205,9 @@
 
 	iommu_coherent_test_device {
 		compatible = "iommu-debug-test";
+		/* Debug only. Each one takes a stream mapping register of the mmss SMMU (54 in total),
+		 * which the JPEG encoder (0x800/0x801) then lacks: "No iommu associated with device". */
+		status = "disabled";
 		/*
 		 * 43 shouldn't be used by anyone on the mmss_smmu.  We just
 		 * need _something_ here to get this node recognized by the
