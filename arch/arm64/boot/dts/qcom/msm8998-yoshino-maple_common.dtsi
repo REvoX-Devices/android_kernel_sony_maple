@@ -288,6 +288,13 @@
 };
 
 &pmi8998_wled {
+	/*
+	 * The three strings are fixed on this panel. At minimum brightness the
+	 * boost converter raises OVP continuously, which makes the driver run
+	 * the string auto-detection (module off, 200/4095 test brightness)
+	 * again and again, and the screen flickers.
+	 */
+	/delete-property/ qcom,auto-string-detection;
 	somc,calc-curr;
 	somc,area_count_table_size = <24>;
 	somc,area_count_table = <0 117 234 351 468 585 702 819
